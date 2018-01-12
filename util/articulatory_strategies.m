@@ -1,6 +1,6 @@
-function [jawSum, lipSum, tngSum, velSum, dzSum] = collectMeasurements( configStruct, folder, strategies )
-%COLLECTMEASUREMENTS - collect articulatory strategy biomarkers for the
-%right articulators in the right linguistic tasks
+function articulatory_strategies(configStruct)
+% ARTICULATORY_STRATEGIES - get articulatory strategies, print out the 
+% quantification, and make graphics
 % 
 % INPUT
 %  Variable name: configStruct
@@ -38,18 +38,12 @@ function [jawSum, lipSum, tngSum, velSum, dzSum] = collectMeasurements( configSt
 %  Description: determines which data-set to analyze; picks out the
 %  appropriate constants from configStruct.
 % 
-%  Variable name: folder
-%  Size: arbitrary
-%  Class: char
-%  Description: determines which participant/scan of the data-set to 
-%    analyze
+% FUNCTION OUTPUT: 
+%  none
 % 
-%  Variable name: colName
-%  Size: arbitrary
-%  Class: char
-%  Description: determines the linguistic task (e.g., 'aia-pal-clo') which
-%    is to be analyzed
-%  
+% SAVED OUTPUT:
+%  Path: configStruct.pathOut
+%  File name: strategies_<dataset>.mat
 %  Variable name: strategies
 %  Size: 1x1
 %  Class: struct
@@ -75,80 +69,26 @@ function [jawSum, lipSum, tngSum, velSum, dzSum] = collectMeasurements( configSt
 %  - cl: (cell array of strings) identifier for the 6 places of 
 %  articulation
 % 
+%  Path: configStruct.pathOut
+%  File name: strategies_<dataset>.csv
+%  Description: This is a spreadsheet with columns for lip, tongue, velum, 
+%    and jaw biomarkers, total elapsed change in z, folder, and linguistic 
+%    task 
+% 
+% Tanner Sorensen
+% Signal Analysis and Interpretation Laboratory
+% Feb. 14, 2017
 
-% initialize
-verbose = configStruct.verbose;
-strategies = strategies.(folder);
 outPath = configStruct.outPath;
-graphicsPath = configStruct.graphicsPath;
+folders = configStruct.folders;
 
-jaw = strategies.jaw;
-lip = strategies.lip;
-tng = strategies.tng;
-vel = strategies.vel;
-dz = strategies.dz;
-
-% Load timestamps file
-timestamps_file_name = configStruct.timestamps_file_name;
-inPath = configStruct.inPath;
-load(fullfile(inPath,'contourdata.mat'))
-
-% Load constriction location names corresponding to each constriction degree.
-cl_list = cell(1,length(strategies.cl));
-for i=1:length(cl_list), cl_list{i} = strategies.cl{i}; end
-
-% Load the time-stamps and the associated filename and speaker IDs. 
-tab = readtable(timestamps_file_name,'Delimiter',',');
-taskVar = table2cell(tab(:,5));
-nFile = size(tab,1);
-
-% Collect measurements by item.
-jawSum = zeros(1,nFile);
-lipSum = zeros(1,nFile);
-tngSum = zeros(1,nFile);
-velSum = zeros(1,nFile);
-dzSum = zeros(1,nFile);
-
-% Open file to print results
-fOut = fopen(fullfile(outPath,'strategies.csv'),'w');
-fprintf(fOut,'folder,task,lip,tng,jaw,vel,z\n');
-
-% Split the files into unique file sets (indicated by a unique identifier
-% in column 6 of the timestamps file)
-fileSets = unique(table2cell(tab(:,6)));
-for i=1:length(fileSets)
-    % Determine which files from contourdata belong to the current file set
-    fileMatch = find(cellfun(@(x) ~isempty(strfind(x,fileSets{i})),contourdata.(folder).fl));
-    idx1 = ismember(contourdata.(folder).File,fileMatch);
-    
-    % Determine which constriction location to compute articulator
-    % contributions towards
-    idx2 = cellfun(@(x) strcmp(x,taskVar{i}),cl_list);
-    
-    % Compute articulator contributions
-    jawSum(i) = sum(jaw(idx1,idx2));
-    lipSum(i) = sum(lip(idx1,idx2));
-    tngSum(i) = sum(tng(idx1,idx2));
-    velSum(i) = sum(vel(idx1,idx2));
-    
-    % Compute total constriction degree change
-    dzSum(i) = sum(dz(idx1,idx2));
-    
-    % Print the articulator contributions and total constriction degree change to file
-    fprintf(fOut,'%s,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n',...
-        folder,taskVar{i},lipSum(i),tngSum(i),jawSum(i),velSum(i),dzSum(i));
-    
-    % Plot the contributions of jaw and lips for up to 10 file sets
-    if verbose
-        figure
-        bar(cumsum([jaw(idx1,idx2) tng(idx1,idx2) lip(idx1,idx2)],1),'stacked')
-        nPt = sum(idx1);
-        xlim([0 nPt+1]), set(gca,'XTick',[])
-        pbaspect([2 1 1])
-        legend({'jaw','tongue','lips'})
-        print(fullfile(graphicsPath,sprintf('%s_%s_%s.png',folder,taskVar{i},fileSets{i})), '-dpng')
-    end
+strategies = struct;
+for i=1:length(folders)
+    participant =folders{i};
+    disp(participant)
+    strategies.(participant) = getStrategies(configStruct,participant);
+    print_error(strategies.(participant))
 end
-fclose(fOut);
+save(fullfile(outPath,'strategies.mat'),'strategies');
 
 end

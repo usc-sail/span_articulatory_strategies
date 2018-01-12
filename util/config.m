@@ -45,16 +45,19 @@ function configStruct = config
 % Feb. 14, 2017
 
 % paths
-inPath = '/home/tsorense/summer2017/repositories/span_contour_processing/mat';
-outPath = '/home/tsorense/summer2017/repositories/span_articulatory_strategies/mat';
-graphicsPath = '/home/tsorense/summer2017/repositories/span_articulatory_strategies/graphics';
-manualAnnotationsPath = '/home/tsorense/summer2017/repositories/span_articulatory_strategies/manual_annotations';
+inPath = '../span_contour_processing/mat';
+outPath = 'mat';
+graphicsPath = 'graphics';
+manualAnnotationsPath = 'manual_annotations';
+trackPath = '../segmentation_results';
 
 % timestamps file name
-timestamps_file_name = '/home/tsorense/summer2017/repositories/span_articulatory_strategies/manual_annotations/segments_ms.csv';
+timestamps_file_name = 'manual_annotations/segments_ms.csv';
 
 % array constants
-folders = {'demo_participant'};
+folders = dir(fullfile(trackPath));
+folders = {folders.name};
+folders = folders(3:end);
 
 % fixed parameters
 FOV = 200; % 200 mm^2 field of view 

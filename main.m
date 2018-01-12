@@ -6,4 +6,5 @@
 
 addpath util
 configStruct = config;
+if ~exist(configStruct.graphicsPath,'dir'), mkdir(configStruct.graphicsPath); end
 articulatory_strategies(configStruct)
