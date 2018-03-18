@@ -1,13 +1,13 @@
-function strategies = getStrategies(configStruct,folder)
+function strategies = getStrategies(configStruct,folder,q)
 % GETSTRATEGIES - get strategies
 % 
 % INPUT: 
-%  Variable name: configStruct
+%  Variable name: config_struct
 %  Size: 1x1
 %  Class: struct
 %  Description: Fields correspond to constants and hyperparameters. 
 %  Fields: 
-%  - outPath: (string) path for saving MATLAB output
+%  - out_path: (string) path for saving MATLAB output
 %  - aviPath: (string) path to the AVI files
 %  - graphicsPath: (string) path to MATALB graphical output
 %  - trackPath: (string) path to segmentation results
@@ -30,12 +30,6 @@ function strategies = getStrategies(configStruct,folder)
 %      in locally weighted linear regression estimator of the jacobian; 
 %      multiply f by 100 to obtain the percentage
 %  - verbose: controls non-essential graphical and text output
-%  
-%  Variable name: dataset
-%  Size: arbitrary
-%  Class: char
-%  Description: determines which data-set to analyze; picks out the
-%  appropriate constants from configStruct.
 % 
 %  Variable name: folder
 %  Size: arbitrary
@@ -75,94 +69,95 @@ function strategies = getStrategies(configStruct,folder)
 % Signal Analysis and Interpretation Laboratory
 % Dec. 20, 2016
 
-inPath = configStruct.inPath;
 f = configStruct.f;
 
 % Load contour data, constriction degree measurements, and factors
-load(fullfile(inPath,'contourdata.mat'))
-load(fullfile(inPath,'tv.mat'));
-load(fullfile(inPath,'U_gfa.mat'));
+load(fullfile(configStruct.in_path,folder),'contour_data')
 
 % Get weights.
-xy = [contourdata.(folder).X, contourdata.(folder).Y];
-xy = zscore(xy);
-w = xy*U_gfa.(folder);
-w = zscore(w);
-nw = size(w,2);
+X = [contour_data.X, contour_data.Y];
+X = X - mean(X);
+W = X*pinv(contour_data.U_gfa');
+nw = size(W,2);
 
-n = length(tv.(folder).tv{1}.cd); % number of video frames
-nz = length(tv.(folder).tv);
-z = zeros(n,nz);
-use = cell(1,nz);
-cl = cell(1,nz);
+n = length(contour_data.tv{1}.cd); % number of video frames
+nz = length(contour_data.tv);
+Z = zeros(n,nz);
 for i=1:nz
     % Get constriction degrees.
-    z(:,i) = tv.(folder).tv{i}.cd;
-    
-    % The 6 entries of the cell array USE are the factor IDs which are
-    % associated with the 6 constriction degree locations. 
-    % factor ID key: 1-jaw, 2-5-tng, 6-7-lips, 8-velum
-    cl{i} = tv.(folder).tv{i}.cl;
-    if strcmp(cl{i},'bilabial')
-        use{i} = [1 6 7];
-    elseif strcmp(cl{i},'pharU')
-        use{i} = 8;
-    elseif strcmp(cl{i},'alv') || strcmp(cl{i},'pal') || strcmp(cl{i},'pharL')
-        use{i} = 1:5;
-    else % softpal
-        use{i} = [1:5 8];
-    end
+    Z(:,i) = contour_data.tv{i}.cd;
+end
+
+lip_idx = 1;
+alv_idx = 2;
+pal_idx = 3;
+vel_idx = 4;
+phar_idx = 5;
+use_u = lip_idx*cellfun(@(x) contains(x,'_apa_'), contour_data.file_list) ...
+    + alv_idx*cellfun(@(x) contains(x,'_ata_'), contour_data.file_list) ...
+    + pal_idx*cellfun(@(x) contains(x,'_aia_'), contour_data.file_list) ...
+    + vel_idx*cellfun(@(x) contains(x,'_aka_'), contour_data.file_list);
+use = zeros(size(Z,1),1);
+for i=1:length(use_u)
+    use = use + use_u(i)*(contour_data.files == i);
 end
 
 % Use central difference formula to get time derivative of weights and
 % constriction degrees. 
-[dzdt,dwdt] = getGrad(z,w,1,contourdata.(folder).File);
+[~,dwdt] = get_grad(Z,W,1,contour_data.files);
 
 % Get q nearest neighbors of each articulator parameter value.
-q = round(f*n);
-[idx, dist] = knnsearch(w,w,'dist','euclidean','K',q);
+fn = round(f*n);
+[idx, dist] = knnsearch(W,W,'dist','euclidean','K',fn);
 
 % Initialize containers.
-J = zeros(nz,nw);
-jaw = zeros(n,nz);
-lip = zeros(n,nz);
-tng = zeros(n,nz);
-vel = zeros(n,nz);
-dz = zeros(n,nz);
-dw = zeros(n,nw);
+jaw = zeros(n,2);
+lip = zeros(n,2);
+tng = zeros(n,2);
+vel = zeros(n,2);
 
 % Initialize constants.
-Pjaw = eye(nw);
-Pjaw(2:end,2:end) = 0;
-Ptng = eye(nw);
-Ptng([1 6:end],[1 6:end]) = 0;
-Plip = eye(nw);
-Plip([1:5 8:end],[1:5 8:end]) = 0;
-Pvel = eye(nw);
-Pvel(1:7,1:7) = 0;
+jaw_idxs = 1:q.jaw;
+tng_idxs = (q.jaw+1):(q.jaw+q.tng);
+lip_idxs = (q.jaw+q.tng+1):(q.jaw+q.tng+q.lip);
+vel_idxs = (q.jaw+q.tng+q.lip+1):(q.jaw+q.tng+q.lip+q.vel);
+Pjaw = zeros(nw);
+Pjaw(jaw_idxs,jaw_idxs) = eye(length(jaw_idxs));
+Ptng = zeros(nw);
+Ptng(tng_idxs,tng_idxs) = eye(length(tng_idxs));
+Plip = zeros(nw);
+Plip(lip_idxs,lip_idxs) = eye(length(lip_idxs));
+Pvel = zeros(nw);
+Pvel(vel_idxs,vel_idxs) = eye(length(vel_idxs));
 
-fprintf('['), ell=1;
 for i=1:n
-    dw(i,:) = dwdt(i,:)';
-    for j=1:nz
+    if use(i) ~= pal_idx
         % Estimate the jacobian J of the forward map at point w(i,:)
-        J(j,use{j}) = lscov(dwdt(idx(i,:),use{j}), ...
-            dzdt(idx(i,:),j), ...
-            arrayfun(@(u) weightfun(u), dist(i,:)./dist(i,end)));
-
+        G = lscov([ones(length(idx(i,:)),1) W(idx(i,:),:)], Z(idx(i,:),use(i)), ...
+            arrayfun(@(u) weight_fun(u), dist(i,:)./dist(i,end)));
+        J = G(2:end)';
+        
         % Determine the contributions of articulators to change in
         % constriction degree.
-        jaw(i,j) = J(j,:)*Pjaw*dw(i,:)';
-        lip(i,j) = J(j,:)*Plip*dw(i,:)';
-        tng(i,j) = J(j,:)*Ptng*dw(i,:)';
-        vel(i,j) = J(j,:)*Pvel*dw(i,:)';
-        dz(i,j) = dzdt(i,j);
+        jaw(i,:) = [J*Pjaw*dwdt(i,:)' NaN];
+        lip(i,:) = [J*Plip*dwdt(i,:)' NaN];
+        tng(i,:) = [J*Ptng*dwdt(i,:)' NaN];
+        vel(i,:) = [J*Pvel*dwdt(i,:)' NaN];
+    else
+        % Estimate the jacobian J of the forward map at point w(i,:)
+        G = lscov([ones(length(idx(i,:)),1) W(idx(i,:),:)], Z(idx(i,:),[use(i) phar_idx]), ...
+            arrayfun(@(u) weight_fun(u), dist(i,:)./dist(i,end)));
+        J = G(2:end,:)';
+        
+        % Determine the contributions of articulators to change in
+        % constriction degree.
+        jaw(i,:) = J*Pjaw*dwdt(i,:)';
+        lip(i,:) = J*Plip*dwdt(i,:)';
+        tng(i,:) = J*Ptng*dwdt(i,:)';
+        vel(i,:) = J*Pvel*dwdt(i,:)';
     end
-    
-    if i/n>ell*0.05, fprintf('='), ell=ell+1; end
 end
-fprintf(']')
 
-strategies = struct('jaw',jaw,'lip',lip,'tng',tng,'vel',vel,'dz',dz,'dw',dw,'cl',{cl});
+strategies = struct('jaw',jaw,'lip',lip,'tng',tng,'vel',vel,'tv',use,'files',contour_data.files,'file_list',contour_data.file_list);
 
 end
